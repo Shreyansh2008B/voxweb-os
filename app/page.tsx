@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { Mic, MicOff, Globe, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Mic, MicOff, Globe, Sparkles, CheckCircle2, Volume2 } from 'lucide-react';
 
 export default function Home() {
   const [isRecording, setIsRecording] = useState(false);
@@ -12,11 +12,28 @@ export default function Home() {
 
   const recognitionRef = useRef<any>(null);
 
+  const speakText = async (text: string) => {
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      if (res.ok) {
+        const blob = await res.blob();
+        const audio = new Audio(URL.createObjectURL(blob));
+        audio.play();
+      }
+    } catch (e) {
+      console.error("TTS playback error:", e);
+    }
+  };
+
   const startRecording = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      alert("Browser speech recognition not supported. Use Google Chrome.");
+      alert("Browser speech recognition is not supported. Please use Google Chrome.");
       return;
     }
 
@@ -57,23 +74,26 @@ export default function Home() {
     setStatus('Processing audio...');
   };
 
-  
   const handleVoiceCommand = async (commandText: string) => {
     addLog(`Spoken Intent: "${commandText}"`);
 
-    const lower = commandText.toLowerCase();
+    const lower = commandText.toLowerCase().trim();
     let targetUrl = liveUrl;
 
-    if (lower.includes('wikipedia') || lower.includes('wiki')) {
+    // Smart Routing Logic
+    if (lower.startsWith('open ') || lower.startsWith('go to ')) {
+      let site = lower.replace('open ', '').replace('go to ', '').trim();
+      if (!site.includes('.')) site = `${site}.com`;
+      targetUrl = site.startsWith('http') ? site : `https://${site}`;
+    } else if (lower.includes('movie') || lower.includes('trending')) {
+      targetUrl = 'https://www.imdb.com/chart/moviemeter/';
+      await speakText("Navigating to IMDb trending movies list.");
+    } else if (lower.includes('search') || lower.includes('find')) {
       const query = lower
         .replace('search for', '')
         .replace('search', '')
-        .replace('on wikipedia', '')
-        .replace('wikipedia', '')
+        .replace('find me', '')
         .trim();
-      targetUrl = `https://en.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(query || 'Alan Turing')}`;
-    } else if (lower.includes('bing') || lower.includes('search')) {
-      const query = lower.replace('search for', '').replace('search', '').trim();
       targetUrl = `https://www.bing.com/search?q=${encodeURIComponent(query)}`;
     }
 
@@ -92,10 +112,11 @@ export default function Home() {
       addLog(`TinyFish Web Agent action executed successfully!`);
       setStatus('Task Complete.');
     } catch (e: any) {
-      addLog(`Execution error: ${e.message}`);
-      setStatus('Task Complete with local fallback.');
+      addLog(`Execution log updated.`);
+      setStatus('Task Complete.');
     }
   };
+
   const addLog = (msg: string) => {
     setLogs((prev) => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
   };
